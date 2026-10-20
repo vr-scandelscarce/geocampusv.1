@@ -1,0 +1,652 @@
+=====================================================================
+GEOCAMPUS - BUGS, SOLUTIONS AND CODE CHANGES TO REACH 9.5/10
+=====================================================================
+
+IMPORTANT REALITY CHECK
+
+  - A single HTML file with localStorage can never score above about 6/10 on security.
+    Everything the browser holds can be edited by the user.
+
+  - To reach 9.5/10, the project must be split into:
+      1) Frontend  (the HTML you already have, cleaned up)
+      2) Backend   (Node.js + Express + database)
+
+  - The backend becomes the "source of truth" for: login, tokens, geofence check,
+    attendance records, OD requests, and role permissions.
+
+  - The frontend only displays data and sends requests.
+
+
+=====================================================================
+PART 1: RECOMMENDED FILE STRUCTURE
+=====================================================================
+
+  geocampus/
+    server/
+      server.js          (Express app, routes)
+      db.js              (SQLite or PostgreSQL connection)
+      auth.js            (login, JWT, role middleware)
+      geo.js             (Haversine on the server)
+      .env               (JWT_SECRET, never commit this)
+    public/
+      index.html         (frontend)
+      app.js             (frontend logic, no secrets)
+
+  Install:
+    npm init -y
+    npm i express better-sqlite3 bcrypt jsonwebtoken helmet express-rate-limit cors dotenv
+
+
+=====================================================================
+PART 2: BUG LIST WITH SOLUTIONS
+=====================================================================
+
+---------------------------------------------------------------------
+BUG 1 (CRITICAL): Passwords hardcoded in plain text
+---------------------------------------------------------------------
+
+  Problem:
+    - The `users` array in the JavaScript shows every password to anyone who
+      views the page source.
+
+  Solution:
+    - Remove the `users` array from the frontend completely.
+    - Store users in the database with hashed passwords.
+    - Login is a POST request to the server.
+
+  Server code (auth.js):
+
+    const bcrypt = require('bcrypt');
+    const jwt = require('jsonwebtoken');
+
+    // Create a user (run once in a seed script)
+    async function createUser(db, id, name, role, plainPassword) {
+      const hash = await bcrypt.hash(plainPassword, 12);
+      db.prepare('INSERT INTO users (id,name,role,password_hash) VALUES (?,?,?,?)')
+        .run(id, name, role, hash);
+    }
+
+    // Login route
+    app.post('/api/login', loginLimiter, async (req, res) => {
+      const { id, password, role } = req.body;
+      const user = db.prepare('SELECT * FROM users WHERE id=? AND role=?').get(id, role);
+      if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      const token = jwt.sign({ id: user.id, role: user.role, name: user.name },
+                             process.env.JWT_SECRET, { expiresIn: '2h' });
+      res.json({ token, user: { id: user.id, name: user.name, role: user.role } });
+    });
+
+  Frontend change (replace handleLogin):
+
+    async function handleLogin() {
+      const role = document.getElementById('loginRole').value;
+      const id = document.getElementById('loginId').value.trim();
+      const password = document.getElementById('loginPass').value;
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, password, role })
+      });
+      if (!res.ok) return showToast('Invalid credentials', 'error');
+      const data = await res.json();
+      sessionStorage.setItem('jwt', data.token);   // only the token, no password, no role trust
+      currentUser = data.user;
+      showDashboard();
+    }
+
+  Also remove the pre-filled values (value="CIT2026001" and value="student123")
+  from the login inputs.
+
+
+---------------------------------------------------------------------
+BUG 2 (CRITICAL): Login state and role stored in localStorage
+---------------------------------------------------------------------
+
+  Problem:
+    - Anyone can run localStorage.setItem("currentUser", '{"role":"admin"}')
+      and become admin.
+
+  Solution:
+    - The role comes ONLY from the signed JWT, and the server checks it on every request.
+    - The frontend role is used only to decide which panels to show (cosmetic).
+    - Real protection is on the server.
+
+  Server middleware:
+
+    function requireAuth(req, res, next) {
+      const h = req.headers.authorization || '';
+      try {
+        req.user = jwt.verify(h.replace('Bearer ', ''), process.env.JWT_SECRET);
+        next();
+      } catch { res.status(401).json({ error: 'Unauthorized' }); }
+    }
+
+    function requireRole(...roles) {
+      return (req, res, next) =>
+        roles.includes(req.user.role) ? next() : res.status(403).json({ error: 'Forbidden' });
+    }
+
+
+---------------------------------------------------------------------
+BUG 3 (CRITICAL): Attendance, tokens and geofence validated in the browser
+---------------------------------------------------------------------
+
+  Problem:
+    - performCheckIn() checks the token, distance and writes the log on the
+      client. A student can edit attendanceLogs in DevTools or call the function
+      with fake coordinates.
+
+  Solution:
+    - The student sends: token + latitude + longitude + accuracy.
+    - The SERVER verifies token validity, expiry, duplicates, and distance.
+    - The server writes the log.
+
+  Server code (geo.js + route):
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371000, toRad = d => d * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    app.post('/api/checkin', requireAuth, requireRole('student'), (req, res) => {
+      const { token, lat, lon, accuracy } = req.body;
+      if (![lat, lon, accuracy].every(Number.isFinite)) {
+        return res.status(400).json({ error: 'Bad input' });
+      }
+
+      const session = db.prepare(
+        'SELECT * FROM sessions WHERE token=? AND expires_at > ?'
+      ).get(String(token).toUpperCase(), Date.now());
+      if (!session) return res.status(400).json({ error: 'Invalid or expired token' });
+
+      if (accuracy > 50) return res.status(400).json({ error: 'GPS accuracy too low' });
+
+      const cfg = db.prepare('SELECT * FROM config WHERE id=1').get();
+      const dist = haversine(lat, lon, cfg.lat, cfg.lon);
+      const inside = dist <= cfg.radius;     // see Bug 5 about not adding accuracy
+
+      const already = db.prepare(
+        "SELECT 1 FROM attendance WHERE user_id=? AND session_id=? AND status='Verified'"
+      ).get(req.user.id, session.id);
+      if (already) return res.status(409).json({ error: 'Already marked' });
+
+      db.prepare(`INSERT INTO attendance
+        (session_id,user_id,course,lat,lon,distance,accuracy,status,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(session.id, req.user.id, session.course, lat, lon,
+             Math.round(dist), accuracy, inside ? 'Verified' : 'Rejected', Date.now());
+
+      res.json({ status: inside ? 'Verified' : 'Rejected', distance: Math.round(dist) });
+    });
+
+  Frontend (replace performCheckIn): send fetch('/api/checkin', {...}) with the
+  Authorization header. Delete the local attendanceLogs.unshift(...) logic.
+
+
+---------------------------------------------------------------------
+BUG 4 (CRITICAL): Faculty token never reaches student devices
+---------------------------------------------------------------------
+
+  Problem:
+    - activeSession is in localStorage, which only exists on the same browser.
+      Students on their own phones will always see "No active session".
+
+  Solution:
+    - Faculty creates the session via the API, the server stores it.
+
+  Server code:
+
+    app.post('/api/sessions', requireAuth, requireRole('faculty'), (req, res) => {
+      const course = String(req.body.course || '').toUpperCase().slice(0, 12);
+      if (!/^[A-Z0-9]{2,12}$/.test(course)) return res.status(400).json({ error: 'Bad course' });
+      const code = crypto.randomInt(100000, 999999);   // use crypto, not Math.random
+      const token = `${course}-${code}`;
+      const expires = Date.now() + 60_000;
+      const info = db.prepare(
+        'INSERT INTO sessions (token,course,faculty_id,expires_at) VALUES (?,?,?,?)'
+      ).run(token, course, req.user.id, expires);
+      res.json({ id: info.lastInsertRowid, token, expiresAt: expires });
+    });
+
+  Add: const crypto = require('crypto');
+
+
+---------------------------------------------------------------------
+BUG 5: Geofence accuracy is ADDED to the radius (loose boundary)
+---------------------------------------------------------------------
+
+  Problem:
+    - radius + accuracy means a 50 m fence becomes 100 m with a bad GPS signal.
+
+  Solution:
+    - Use the strict radius.
+    - Reject the check-in if accuracy > 30 m (or 50 m).
+    - Optionally allow a small tolerance of at most 10 m, set by the admin.
+
+  Change:
+    const isInside = distance <= campusConfig.radius;    // strict
+
+
+---------------------------------------------------------------------
+BUG 6: Student cannot retry after a "Rejected" check-in
+---------------------------------------------------------------------
+
+  Problem:
+    const alreadyMarked = attendanceLogs.find(log => log.userId === ... && log.sessionId === ...)
+    matches Rejected logs too, so one failed attempt blocks the student.
+
+  Solution:
+    - Block only when an existing record has status "Verified".
+    - Rate-limit attempts (e.g. max 5 per session).
+
+  Change (frontend version, if you keep any local logic):
+    const alreadyMarked = attendanceLogs.find(log =>
+      log.userId === currentUser.id &&
+      log.sessionId === activeSession.token &&
+      log.status === 'Verified');
+
+  (The server code in Bug 3 already does this.)
+
+
+---------------------------------------------------------------------
+BUG 7 (HIGH): XSS through innerHTML
+---------------------------------------------------------------------
+
+  Problem:
+    - OD reason, imported file data, and log fields are inserted with innerHTML.
+      Entering <img src=x onerror=alert(1)> as an OD reason runs code in the
+      faculty's browser.
+
+  Solution A: add an escape helper and wrap every dynamic value.
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // Example in renderAttendanceTable
+    <td class="p-3 font-medium text-slate-800">${esc(log.userId)}</td>
+    <td class="p-3 text-slate-600">${esc(log.course)}</td>
+    <td class="p-3">${esc(log.status)}</td>
+
+    // Example in renderFacultyOdList
+    <p class="font-bold text-slate-800">${esc(req.user)} - ${esc(req.reason)}</p>
+
+  Solution B: add a Content-Security-Policy via helmet on the server.
+
+    const helmet = require('helmet');
+    app.use(helmet());
+
+
+---------------------------------------------------------------------
+BUG 8 (HIGH): "Scan" QR is mentioned but no scanner exists
+---------------------------------------------------------------------
+
+  Solution:
+    - Add html5-qrcode (pin the version).
+
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <div id="qrReader" class="w-full max-w-xs"></div>
+
+    function startScanner() {
+      const scanner = new Html5Qrcode('qrReader');
+      scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 },
+        (text) => {
+          document.getElementById('sessionTokenInput').value = text;
+          scanner.stop();
+          performCheckIn();
+        });
+    }
+
+  Add a "Scan QR" button in the student panel that calls startScanner().
+  Camera access needs HTTPS (or localhost).
+
+
+---------------------------------------------------------------------
+BUG 9: Token expires after 60 s but never refreshes
+---------------------------------------------------------------------
+
+  Problem:
+    - The timer shows "Expired" and faculty must press New Session manually.
+
+  Solution:
+    - Auto-rotate the token every 30-60 s while a session is "open".
+    - Server keeps the last 2 tokens valid to handle network delay.
+
+  Frontend:
+    let rotateTimer = null;
+    function startAutoRotate() {
+      generateNewSession();
+      rotateTimer = setInterval(generateNewSession, 45000);
+    }
+    function stopAutoRotate() { clearInterval(rotateTimer); }
+
+  Also remove the alert() inside generateNewSession, since it would pop up
+  every rotation. Use a small toast instead (see Bug 14).
+
+
+---------------------------------------------------------------------
+BUG 10: Fake static statistics
+---------------------------------------------------------------------
+
+  Problem:
+    - "Attendance Rate 94.2%" and "Active Sessions 3" are hardcoded.
+
+  Solution:
+    - Add a stats endpoint and fill the cards from real data.
+
+    app.get('/api/stats', requireAuth, (req, res) => {
+      const uid = req.user.id;
+      const total = db.prepare('SELECT COUNT(*) c FROM attendance WHERE user_id=?').get(uid).c;
+      const ok = db.prepare("SELECT COUNT(*) c FROM attendance WHERE user_id=? AND status='Verified'").get(uid).c;
+      const active = db.prepare('SELECT COUNT(*) c FROM sessions WHERE expires_at > ?').get(Date.now()).c;
+      const pendingOD = db.prepare("SELECT COUNT(*) c FROM od_requests WHERE status='Pending'").get().c;
+      res.json({ rate: total ? +(ok / total * 100).toFixed(1) : 0, active, pendingOD });
+    });
+
+  Chart.js is loaded but unused. Either use it (daily attendance bar chart on
+  the admin panel) or remove the script tag.
+
+
+---------------------------------------------------------------------
+BUG 11: Role-based access control missing in the UI and API
+---------------------------------------------------------------------
+
+  Problems:
+    - Students see ALL users' logs.
+    - Import/Export buttons are visible to everyone.
+    - Any user can approve ODs if they call the function.
+
+  Solution (server side):
+
+    // Students: only own logs. Faculty: own courses. Admin: all.
+    app.get('/api/attendance', requireAuth, (req, res) => {
+      let rows;
+      if (req.user.role === 'student')
+        rows = db.prepare('SELECT * FROM attendance WHERE user_id=? ORDER BY created_at DESC').all(req.user.id);
+      else if (req.user.role === 'faculty')
+        rows = db.prepare(`SELECT a.* FROM attendance a JOIN sessions s ON s.id=a.session_id
+                           WHERE s.faculty_id=? ORDER BY a.created_at DESC`).all(req.user.id);
+      else
+        rows = db.prepare('SELECT * FROM attendance ORDER BY created_at DESC').all();
+      res.json(rows);
+    });
+
+    app.post('/api/od/:id/decision', requireAuth, requireRole('faculty','admin'), ...);
+    app.post('/api/import', requireAuth, requireRole('admin'), ...);
+    app.put('/api/config', requireAuth, requireRole('admin'), ...);
+
+  Frontend:
+    - Hide the import button and export buttons unless role === 'admin'.
+    - Hide the Student panel table columns that show other users.
+
+
+---------------------------------------------------------------------
+BUG 12: OD proof file is never stored; students cannot see OD status
+---------------------------------------------------------------------
+
+  Solution:
+    - Use multer on the server to save the file (limit size and type).
+    - Add GET /api/od/mine so students see Pending / Approved / Rejected.
+
+    npm i multer
+    const multer = require('multer');
+    const upload = multer({
+      dest: 'uploads/',
+      limits: { fileSize: 2 * 1024 * 1024 },
+      fileFilter: (req, f, cb) => cb(null, ['image/png','image/jpeg','application/pdf'].includes(f.mimetype))
+    });
+
+    app.post('/api/od', requireAuth, requireRole('student'), upload.single('proof'), (req, res) => {
+      db.prepare('INSERT INTO od_requests (user_id,reason,date,proof,status) VALUES (?,?,?,?,?)')
+        .run(req.user.id, req.body.reason, req.body.date, req.file?.filename || null, 'Pending');
+      res.json({ ok: true });
+    });
+
+    app.get('/api/od/mine', requireAuth, requireRole('student'), (req, res) =>
+      res.json(db.prepare('SELECT * FROM od_requests WHERE user_id=?').all(req.user.id)));
+
+  Frontend: add a small "My OD Requests" list in the student panel.
+
+  Also fix the ID bug: id: odRequests.length + 1 can duplicate after deletion.
+  Let the database auto-increment instead.
+
+
+---------------------------------------------------------------------
+BUG 13: Import accepts any data without validation
+---------------------------------------------------------------------
+
+  Solution (server side, admin only):
+    - Validate each row: userId matches /^[A-Za-z0-9]{3,20}$/, status in an
+      allowed list, timestamp is a valid date, coords are numbers.
+    - Reject rows that fail, and report how many were skipped.
+    - Use a unique key (session_id + user_id) in the database so duplicates
+      are blocked by the database itself:
+
+      CREATE UNIQUE INDEX idx_att_unique
+        ON attendance(session_id, user_id) WHERE status='Verified';
+
+
+---------------------------------------------------------------------
+BUG 14: alert() used for every message
+---------------------------------------------------------------------
+
+  Solution: replace with a toast function.
+
+    function showToast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.textContent = msg;                       // textContent, not innerHTML
+      el.setAttribute('role', 'status');
+      el.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-sm text-white ' +
+        (type === 'error' ? 'bg-rose-600' : type === 'success' ? 'bg-emerald-600' : 'bg-slate-800');
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+  Then replace every alert("...") with showToast("...", 'success' | 'error').
+
+
+---------------------------------------------------------------------
+BUG 15: Fake "Dynamic 2FA" claim
+---------------------------------------------------------------------
+
+  Solution (choose one):
+    - Honest option: change the footer text to "Haversine Geofence + Rotating Session Tokens".
+    - Real option: add TOTP 2FA for faculty and admin using the "otplib" package
+      (scan a QR in Google Authenticator, then verify a 6-digit code at login).
+
+
+---------------------------------------------------------------------
+BUG 16: Anti-spoofing is weak (accuracy === 0 only)
+---------------------------------------------------------------------
+
+  Reality:
+    - Browsers cannot detect mock-location apps reliably.
+
+  Best-effort solutions (add as many as practical):
+    - Server-side impossible-travel check: if the same user's two check-ins are
+      far apart in a short time, flag as suspicious.
+    - Flag identical coordinates (exactly the same 6 decimals) used by many
+      different students (a sign of a copied fake location).
+    - Store device fingerprint (user agent + a random device ID kept after
+      login) and flag one device marking attendance for several students.
+    - Require the rotating QR (Bug 8, 9) so a student must be physically seeing
+      the faculty screen.
+    - Optional: Wi-Fi/IP check, where the server confirms the request comes
+      from the campus IP range.
+
+    // Example: device sharing flag
+    const dup = db.prepare(`SELECT COUNT(DISTINCT user_id) c FROM attendance
+                            WHERE session_id=? AND device_id=?`).get(session.id, deviceId);
+    if (dup.c >= 1 && !sameUser) status = 'Flagged (Shared Device)';
+
+
+---------------------------------------------------------------------
+BUG 17: Accessibility problems
+---------------------------------------------------------------------
+
+  Solutions:
+    - Link labels to inputs:  <label for="loginId">...</label> <input id="loginId">
+    - Add aria-label to icon-only buttons.
+    - Add aria-live="polite" to the geofence status and the token timer.
+    - Make the logo (a div with onclick) a real <button>.
+    - Ensure visible focus rings on all controls (focus-visible:ring-2).
+    - Check color contrast: text-slate-400 on white is too light for small text;
+      use text-slate-500 or darker.
+    - Add <html lang="en"> (already present) and a skip link.
+
+
+---------------------------------------------------------------------
+BUG 18: CDN scripts are not pinned or integrity-checked
+---------------------------------------------------------------------
+
+  Solution:
+    - Pin exact versions and add SRI hashes.
+    - Better: install packages with npm and serve them locally.
+    - Do NOT use cdn.tailwindcss.com in production. Build Tailwind with the CLI.
+    - chart.js has no version in your URL; pin it (e.g. chart.js@4.4.1).
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+            integrity="sha384-..." crossorigin="anonymous"></script>
+
+  (Generate the hash at https://www.srihash.org/)
+
+
+---------------------------------------------------------------------
+BUG 19: Code quality - duplicated and global code
+---------------------------------------------------------------------
+
+  Solutions:
+    - Create one function showDashboard(user) and call it from BOTH the page-load
+      handler and handleLogin (the panel-toggle code is duplicated now).
+    - Move JavaScript into app.js, split into modules: api.js, ui.js, geo.js.
+    - Replace inline onclick="..." with addEventListener.
+    - Replace global variables with a single `state` object.
+    - Add try/catch around every fetch and handle network errors.
+    - Add basic automated tests for the server (Jest + supertest), especially
+      haversine, check-in, and role checks.
+
+
+---------------------------------------------------------------------
+BUG 20: Missing server hardening
+---------------------------------------------------------------------
+
+  Add:
+    const rateLimit = require('express-rate-limit');
+    const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: 10 });   // brute force protection
+    app.use(express.json({ limit: '100kb' }));
+    app.use(helmet());
+    // Serve over HTTPS (required for GPS and camera on phones)
+    // Keep JWT_SECRET in .env, never in code
+    // Use parameterized queries only (already shown), to prevent SQL injection
+    // Log security events (failed logins, flagged check-ins) with timestamps
+
+
+=====================================================================
+PART 3: DATABASE SCHEMA (SQLite)
+=====================================================================
+
+  CREATE TABLE users (
+    id TEXT PRIMARY KEY, name TEXT, role TEXT CHECK(role IN ('student','faculty','admin')),
+    password_hash TEXT NOT NULL
+  );
+  CREATE TABLE config (id INTEGER PRIMARY KEY CHECK(id=1), lat REAL, lon REAL, radius REAL);
+  CREATE TABLE sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT UNIQUE, course TEXT,
+    faculty_id TEXT, expires_at INTEGER
+  );
+  CREATE TABLE attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER, user_id TEXT, course TEXT,
+    lat REAL, lon REAL, distance INTEGER, accuracy REAL, device_id TEXT,
+    status TEXT, created_at INTEGER
+  );
+  CREATE TABLE od_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, reason TEXT, date TEXT,
+    proof TEXT, status TEXT DEFAULT 'Pending'
+  );
+  INSERT INTO config VALUES (1, 13.0827, 80.2707, 50);
+
+
+=====================================================================
+PART 4: EXPECTED SCORES AFTER ALL FIXES
+=====================================================================
+
+  - UI/UX ........................ 9.5  (toasts, scanner, student OD status)
+  - Feature coverage ............. 9.5  (real stats, rotating QR, validated import)
+  - Geofence logic ............... 9.5  (strict radius, server-side check)
+  - Security ..................... 9.5  (hashing, JWT, RBAC, XSS fix, rate limit, helmet)
+  - Anti-spoofing ................ 8.5  (best-effort only; no browser can fully stop it)
+  - Multi-device reality ......... 9.5  (backend sessions)
+  - Correctness / bugs ........... 9.5
+  - Privacy / access control ..... 9.5
+  - Code quality ................. 9.0
+  - Accessibility ................ 9.0
+  - Performance .................. 9.5
+
+  Overall: about 9.3 - 9.5.
+  Anti-spoofing is the one area that stays below 9.5 on any browser-based system.
+  A native mobile app (with mock-location detection APIs) would be needed to go higher.
+
+
+=====================================================================
+PART 5: SUGGESTED ORDER OF WORK
+=====================================================================
+
+  1) Set up Node + SQLite + the schema.
+  2) Build /api/login with bcrypt + JWT, then remove users[] and localStorage login.
+  3) Move session creation and check-in to the server (Bugs 3, 4, 5, 6).
+  4) Fix XSS with esc() and add helmet (Bug 7).
+  5) Add role-based endpoints and hide UI by role (Bug 11).
+  6) Add the QR scanner and token auto-rotation (Bugs 8, 9).
+  7) Real stats, OD storage, and OD status view (Bugs 10, 12).
+  8) Validate imports and add the unique index (Bug 13).
+  9) Toasts, accessibility, pinned scripts (Bugs 14, 17, 18).
+  10) Clean up the code structure and write tests (Bug 19).
+  11) Deploy over HTTPS (Render, Railway, or a college server).
+
+
+=====================================================================
+TERMS EXPLAINED
+=====================================================================
+
+  - Backend: server code and database that users cannot edit from their browser.
+
+  - JWT (JSON Web Token): a signed pass the server gives after login. The server
+    checks its signature on every request, so it cannot be faked without the secret.
+
+  - bcrypt / hashing: a one-way scrambling of passwords, so even the database owner
+    cannot read the original.
+
+  - RBAC (Role-Based Access Control): rules that decide what each role
+    (student, faculty, admin) is allowed to do.
+
+  - XSS (Cross-Site Scripting): attacker-written script running inside your page
+    because user text was inserted as HTML.
+
+  - SRI (Subresource Integrity): a hash that makes the browser reject a CDN file
+    if it was changed.
+
+  - CSP (Content-Security-Policy): a browser rule listing which scripts and
+    sources the page may load.
+
+  - Rate limiting: capping how many requests one user/IP can make, to stop
+    password guessing.
+
+  - Haversine formula: calculates the distance between two GPS points on a sphere.
+
+  - Geofence: a virtual boundary, here a circle around the campus center.
+
+  - TOTP: time-based one-time passwords (the 6-digit codes in authenticator apps).
+
+  - Parameterized query: a database query where values are passed separately
+    (the "?" placeholders), which prevents SQL injection.
+
+  - SQL injection: attacker input that changes the meaning of a database query.
+
+  - Toast: a small temporary notification message that does not block the page.
+=====================================================================

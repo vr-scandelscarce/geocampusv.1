@@ -1,0 +1,356 @@
+{
+  "users": [
+    {
+      "id": "CIT2026001",
+      "name": "Aditya Sharma",
+      "role": "student",
+      "department": "Computer Science & Engineering",
+      "email": "aditya.cit@campus.edu",
+      "password_hash": "$2b$12$by2JLjTibsT/ybH7x47Mr.BzB/hBfqyDOU7ZIlL6ZqsI4V2Zhknae"
+    },
+    {
+      "id": "CIT2026002",
+      "name": "Priya Narayanan",
+      "role": "student",
+      "department": "Computer Science & Engineering",
+      "email": "priya.cit@campus.edu",
+      "password_hash": "$2b$12$by2JLjTibsT/ybH7x47Mr.BzB/hBfqyDOU7ZIlL6ZqsI4V2Zhknae"
+    },
+    {
+      "id": "CIT2026003",
+      "name": "Kavita Menon",
+      "role": "student",
+      "department": "Information Technology",
+      "email": "kavita.cit@campus.edu",
+      "password_hash": "$2b$12$by2JLjTibsT/ybH7x47Mr.BzB/hBfqyDOU7ZIlL6ZqsI4V2Zhknae"
+    },
+    {
+      "id": "faculty01",
+      "name": "Dr. Ramesh Kumar",
+      "role": "faculty",
+      "department": "Computer Science & Engineering",
+      "email": "ramesh.kumar@faculty.campus.edu",
+      "password_hash": "$2b$12$FshOyJBgCJAQ2/OM6WAU2uHl.jWIASpydbxYSmFGnSxR968nMaKrS"
+    },
+    {
+      "id": "admin01",
+      "name": "System Administrator",
+      "role": "admin",
+      "department": "IT Infrastructure & Security",
+      "email": "security.admin@campus.edu",
+      "password_hash": "$2b$12$RtQteW9JlUcg9arRqSu10erWvI8tVXeNp6f2Gg7w.QY5kHhb7ZrE."
+    }
+  ],
+  "config": {
+    "id": 1,
+    "campusName": "CIT Central Academic Quadrangle",
+    "lat": 13.0827,
+    "lon": 80.2707,
+    "radius": 50,
+    "maxGpsAccuracy": 50,
+    "allowToleranceMeters": 5
+  },
+  "sessions": [
+    {
+      "id": 1,
+      "token": "CS301-341016",
+      "course": "CS301",
+      "faculty_id": "faculty01",
+      "faculty_name": "Dr. Ramesh Kumar",
+      "created_at": 1792478650518,
+      "expires_at": 1792478710518,
+      "is_active": true,
+      "auto_rotate": false
+    }
+  ],
+  "attendance": [
+    {
+      "session_id": 1,
+      "session_token": "CS301-341016",
+      "user_id": "CIT2026003",
+      "user_name": "Kavita Menon",
+      "course": "CS301",
+      "lat": 13.08271,
+      "lon": 80.27071,
+      "distance": 2,
+      "accuracy": 85,
+      "device_id": "dev_student_test_3",
+      "status": "Rejected (Weak GPS)",
+      "flags": [],
+      "created_at": 1792478707423,
+      "id": 9
+    },
+    {
+      "session_id": 1,
+      "session_token": "CS301-341016",
+      "user_id": "CIT2026003",
+      "user_name": "Kavita Menon",
+      "course": "CS301",
+      "lat": 13.08271,
+      "lon": 80.27071,
+      "distance": 2,
+      "accuracy": 5,
+      "device_id": "dev_student_test_1",
+      "status": "Flagged (Shared Device)",
+      "flags": [
+        "DEVICE_SHARING_DETECTED"
+      ],
+      "created_at": 1792478697886,
+      "id": 8
+    },
+    {
+      "session_id": 1,
+      "session_token": "CS301-341016",
+      "user_id": "CIT2026002",
+      "user_name": "Priya Narayanan",
+      "course": "CS301",
+      "lat": 13.08272,
+      "lon": 80.27072,
+      "distance": 3,
+      "accuracy": 5,
+      "device_id": "dev_student_test_2",
+      "status": "Verified",
+      "flags": [],
+      "created_at": 1792478691325,
+      "id": 7
+    },
+    {
+      "session_id": 1,
+      "session_token": "CS301-341016",
+      "user_id": "CIT2026002",
+      "user_name": "Priya Narayanan",
+      "course": "CS301",
+      "lat": 13.0855,
+      "lon": 80.2745,
+      "distance": 516,
+      "accuracy": 8,
+      "device_id": "dev_student_test_2",
+      "status": "Rejected (Out of Bounds)",
+      "flags": [],
+      "created_at": 1792478678591,
+      "id": 6
+    },
+    {
+      "session_id": 1,
+      "session_token": "CS301-341016",
+      "user_id": "CIT2026001",
+      "user_name": "Aditya Sharma",
+      "course": "CS301",
+      "lat": 13.08271,
+      "lon": 80.27071,
+      "distance": 2,
+      "accuracy": 6,
+      "device_id": "dev_student_test_1",
+      "status": "Verified",
+      "flags": [],
+      "created_at": 1792478664479,
+      "id": 5
+    },
+    {
+      "id": 1,
+      "session_id": 101,
+      "session_token": "CS301-849201",
+      "user_id": "CIT2026001",
+      "user_name": "Aditya Sharma",
+      "course": "CS301",
+      "lat": 13.08271,
+      "lon": 80.27072,
+      "distance": 3,
+      "accuracy": 6.2,
+      "device_id": "dev_cit_demo_01",
+      "status": "Verified",
+      "created_at": 1792305815951
+    },
+    {
+      "id": 2,
+      "session_id": 101,
+      "session_token": "CS301-849201",
+      "user_id": "CIT2026002",
+      "user_name": "Priya Narayanan",
+      "course": "CS301",
+      "lat": 13.08282,
+      "lon": 80.27065,
+      "distance": 14,
+      "accuracy": 8.5,
+      "device_id": "dev_cit_demo_02",
+      "status": "Verified",
+      "created_at": 1792305830951
+    },
+    {
+      "id": 3,
+      "session_id": 102,
+      "session_token": "CS302-194032",
+      "user_id": "CIT2026001",
+      "user_name": "Aditya Sharma",
+      "course": "CS302",
+      "lat": 13.08269,
+      "lon": 80.27068,
+      "distance": 2,
+      "accuracy": 5.1,
+      "device_id": "dev_cit_demo_01",
+      "status": "Verified",
+      "created_at": 1792392215951
+    },
+    {
+      "id": 4,
+      "session_id": 102,
+      "session_token": "CS302-194032",
+      "user_id": "CIT2026003",
+      "user_name": "Kavita Menon",
+      "course": "CS302",
+      "lat": 13.0845,
+      "lon": 80.2731,
+      "distance": 320,
+      "accuracy": 12,
+      "device_id": "dev_cit_demo_03",
+      "status": "Rejected (Out of Bounds)",
+      "created_at": 1792392247951
+    }
+  ],
+  "od_requests": [
+    {
+      "id": 1,
+      "user_id": "CIT2026001",
+      "user_name": "Aditya Sharma",
+      "reason": "National Smart India Hackathon Grand Finale",
+      "date": "2026-10-23",
+      "proof_filename": null,
+      "proof_original_name": "sih_acceptance_letter.pdf",
+      "status": "Pending",
+      "created_at": 1792460615951
+    },
+    {
+      "id": 2,
+      "user_id": "CIT2026002",
+      "user_name": "Priya Narayanan",
+      "reason": "State Level Inter-College Basketball Tournament",
+      "date": "2026-10-16",
+      "proof_filename": null,
+      "proof_original_name": "sports_board_od.pdf",
+      "status": "Approved",
+      "created_at": 1792046615951,
+      "reviewed_by": "faculty01",
+      "decision_notes": "Approved based on Physical Education Director verification."
+    }
+  ],
+  "audit_logs": [
+    {
+      "id": 17,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "admin01",
+      "details": "User logged in to admin portal.",
+      "timestamp": 1792478718599
+    },
+    {
+      "id": 16,
+      "event": "ATTENDANCE_REJECTED",
+      "user_id": "CIT2026003",
+      "details": "Rejected (Rejected (Weak GPS)) for session CS301-341016: GPS accuracy is too low (±85m). Maximum allowed is ±50m. Please step outdoors or disable power saving mode.",
+      "timestamp": 1792478707423
+    },
+    {
+      "id": 15,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "CIT2026003",
+      "details": "User logged in to student portal.",
+      "timestamp": 1792478707405
+    },
+    {
+      "id": 14,
+      "event": "ATTENDANCE_REJECTED",
+      "user_id": "CIT2026003",
+      "details": "Rejected (Flagged (Shared Device)) for session CS301-341016: Device sharing detected: This hardware device was already used by Aditya Sharma (CIT2026001) for this class session.",
+      "timestamp": 1792478697886
+    },
+    {
+      "id": 13,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "CIT2026003",
+      "details": "User logged in to student portal.",
+      "timestamp": 1792478697864
+    },
+    {
+      "id": 12,
+      "event": "ATTENDANCE_VERIFIED",
+      "user_id": "CIT2026002",
+      "details": "Verified check-in for session CS301-341016 at 3m",
+      "timestamp": 1792478691326
+    },
+    {
+      "id": 11,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "CIT2026002",
+      "details": "User logged in to student portal.",
+      "timestamp": 1792478691311
+    },
+    {
+      "id": 10,
+      "event": "ATTENDANCE_REJECTED",
+      "user_id": "CIT2026002",
+      "details": "Rejected (Rejected (Out of Bounds)) for session CS301-341016: Location is 516m from campus center, which exceeds the authorized perimeter of 55m.",
+      "timestamp": 1792478678591
+    },
+    {
+      "id": 9,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "CIT2026002",
+      "details": "User logged in to student portal.",
+      "timestamp": 1792478678574
+    },
+    {
+      "id": 8,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "CIT2026001",
+      "details": "User logged in to student portal.",
+      "timestamp": 1792478670996
+    },
+    {
+      "id": 7,
+      "event": "ATTENDANCE_VERIFIED",
+      "user_id": "CIT2026001",
+      "details": "Verified check-in for session CS301-341016 at 2m",
+      "timestamp": 1792478664480
+    },
+    {
+      "id": 6,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "CIT2026001",
+      "details": "User logged in to student portal.",
+      "timestamp": 1792478664456
+    },
+    {
+      "id": 5,
+      "event": "SESSION_CREATED",
+      "user_id": "faculty01",
+      "details": "Created session CS301-341016 for CS301",
+      "timestamp": 1792478650518
+    },
+    {
+      "id": 4,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "faculty01",
+      "details": "User logged in to faculty portal.",
+      "timestamp": 1792478650497
+    },
+    {
+      "id": 3,
+      "event": "FAILED_LOGIN_BAD_PASSWORD",
+      "user_id": "CIT2026001",
+      "details": "Bad password attempt for user: CIT2026001",
+      "timestamp": 1792478644150
+    },
+    {
+      "id": 2,
+      "event": "SUCCESS_LOGIN",
+      "user_id": "CIT2026001",
+      "details": "User logged in to student portal.",
+      "timestamp": 1792478638286
+    },
+    {
+      "id": 1,
+      "event": "SYSTEM_INIT",
+      "details": "GeoCampus system initialized with default geofence configuration.",
+      "timestamp": 1792478615951
+    }
+  ]
+}

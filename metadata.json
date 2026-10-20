@@ -1,0 +1,6 @@
+{
+  "name": "GeoCampus - Hybrid Attendance & Geofencing System",
+  "description": "Secure, enterprise-grade hybrid attendance and geofencing platform featuring server-authoritative Haversine validation, dynamic rotating QR tokens, anti-spoofing heuristics, role-based access control, and SQLite relational persistence.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

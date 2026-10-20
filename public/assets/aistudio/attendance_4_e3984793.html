@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoCampus - Hybrid Attendance & Geofencing System</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS for Excel Export/Import -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js for Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- QRCode.js for Dynamic Session QR Codes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+    <!-- Header / Navbar -->
+    <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('dashboard')">
+                <div class="bg-indigo-700 p-2 rounded-lg text-indigo-200">
+                    <i class="fa-solid fa-location-crosshairs text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide">GeoCampus</h1>
+                    <p class="text-xs text-indigo-300">Hybrid Attendance & Geofencing System</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <div id="userInfo" class="hidden md:flex items-center space-x-2 bg-indigo-800 px-3 py-1.5 rounded-full text-sm">
+                    <i class="fa-solid fa-user-circle text-indigo-300"></i>
+                    <span id="userNameRole" class="font-medium">Guest User</span>
+                </div>
+                <button onclick="logout()" id="logoutBtn" class="hidden bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center space-x-1">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-6">
+
+        <!-- AUTH VIEW (Login / Role Selection) -->
+        <section id="authView" class="max-w-md mx-auto mt-12 bg-white p-8 rounded-2xl shadow-xl border border-slate-100">
+            <div class="text-center mb-6">
+                <div class="inline-block bg-indigo-50 text-indigo-600 p-4 rounded-full mb-3">
+                    <i class="fa-solid fa-graduation-cap text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-900">Welcome to GeoCampus</h2>
+                <p class="text-sm text-slate-500 mt-1">Select your portal to sign in securely</p>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Select Role</label>
+                    <select id="loginRole" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        <option value="student">Student Portal</option>
+                        <option value="faculty">Faculty Portal</option>
+                        <option value="admin">System Administrator</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">User ID / Email</label>
+                    <input type="text" id="loginId" placeholder="e.g., CIT2026001 or faculty01" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" value="CIT2026001">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Password</label>
+                    <input type="password" id="loginPass" placeholder="••••••••" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" value="student123">
+                </div>
+
+                <button onclick="handleLogin()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg transition shadow-md flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-right-to-bracket"></i>
+                    <span>Secure Sign In</span>
+                </button>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-slate-100 text-center text-xs text-slate-400">
+                <p><i class="fa-solid fa-shield-halved text-emerald-500 mr-1"></i> Haversine Geofence & Dynamic 2FA Protected</p>
+            </div>
+        </section>
+
+        <!-- DASHBOARD VIEW (Dynamic based on role) -->
+        <section id="dashboardView" class="hidden space-y-6">
+            
+            <!-- Quick Stats Bar -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center space-x-4">
+                    <div class="bg-blue-50 text-blue-600 p-3 rounded-xl">
+                        <i class="fa-solid fa-calendar-check text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium uppercase">Attendance Rate</p>
+                        <h3 id="statAttendanceRate" class="text-2xl font-bold text-slate-800">94.2%</h3>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center space-x-4">
+                    <div class="bg-emerald-50 text-emerald-600 p-3 rounded-xl">
+                        <i class="fa-solid fa-location-dot text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium uppercase">GPS Status</p>
+                        <h3 id="statGpsStatus" class="text-xl font-bold text-emerald-600">Within Perimeter</h3>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center space-x-4">
+                    <div class="bg-amber-50 text-amber-600 p-3 rounded-xl">
+                        <i class="fa-solid fa-file-lines text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium uppercase">Pending OD Requests</p>
+                        <h3 id="statOdRequests" class="text-2xl font-bold text-slate-800">0</h3>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center space-x-4">
+                    <div class="bg-purple-50 text-purple-600 p-3 rounded-xl">
+                        <i class="fa-solid fa-clock text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium uppercase">Active Sessions</p>
+                        <h3 id="statActiveSessions" class="text-2xl font-bold text-slate-800">3</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Role-Specific Action Panels -->
+            <div id="studentPanel" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Check-in Station -->
+                <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-qrcode text-indigo-600 mr-2"></i>Class Check-In Station</h3>
+                            <span class="bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full">GPS Active</span>
+                        </div>
+                        <p class="text-sm text-slate-500 mb-6">Scan the instructor's dynamic QR code or enter the session code while within the campus geofence boundary.</p>
+                        
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 space-y-4">
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-slate-600 font-medium">Your Current Coordinates:</span>
+                                <span id="currentCoords" class="font-mono text-xs bg-white px-2 py-1 rounded border border-slate-200">Retrieving GPS...</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-slate-600 font-medium">Distance from Campus Center:</span>
+                                <span id="currentDistance" class="font-mono text-xs bg-white px-2 py-1 rounded border border-slate-200">Calculating...</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-slate-600 font-medium">Geofence Status:</span>
+                                <span id="geofenceIndicator" class="font-bold text-emerald-600 text-xs bg-emerald-50 px-2 py-1 rounded">Verifying...</span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Enter Session Code or Token</label>
+                                <div class="flex space-x-2">
+                                    <input type="text" id="sessionTokenInput" placeholder="e.g., CS301-9842" class="flex-grow bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none uppercase font-mono">
+                                    <button onclick="performCheckIn()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow">
+                                        <i class="fa-solid fa-fingerprint mr-1"></i> Check In
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- On-Duty Request Widget -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900 mb-4"><i class="fa-solid fa-paper-plane text-indigo-600 mr-2"></i>Apply for On-Duty (OD)</h3>
+                        <form id="odForm" onsubmit="submitOD(event)" class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Event / Reason</label>
+                                <input type="text" id="odReason" required placeholder="e.g., Hackathon 2026" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Date</label>
+                                <input type="date" id="odDate" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Supporting Proof</label>
+                                <input type="file" id="odFile" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                            </div>
+                            <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 rounded-lg transition text-sm">
+                                Submit OD Request
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Faculty Panel -->
+            <div id="facultyPanel" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- QR Generator & Session Manager -->
+                <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-qrcode text-indigo-600 mr-2"></i>Live Session Generator</h3>
+                            <button onclick="generateNewSession()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition flex items-center">
+                                <i class="fa-solid fa-plus mr-1"></i> New Session
+                            </button>
+                        </div>
+                        <p class="text-sm text-slate-500 mb-6">Generate dynamic single-use tokens and scannable QR codes for your lectures. Tokens automatically expire in 60 seconds.</p>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center bg-slate-50 p-6 rounded-xl border border-slate-200">
+                            <div class="text-center sm:text-left space-y-3">
+                                <div>
+                                    <span class="block text-xs font-semibold uppercase text-slate-400 mb-1">Active Course Code</span>
+                                    <input type="text" id="facultyCourseCodeInput" value="CS301" placeholder="e.g. CS301" class="w-32 bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none uppercase">
+                                </div>
+                                <div>
+                                    <span class="block text-xs font-semibold uppercase text-slate-400">Active Session Token</span>
+                                    <div id="activeSessionToken" class="font-mono text-2xl font-bold text-indigo-600 mt-1">NO ACTIVE SESSION</div>
+                                </div>
+                                <div>
+                                    <span class="block text-xs font-semibold uppercase text-slate-400">Token Expiry</span>
+                                    <div id="tokenTimer" class="text-sm font-semibold text-slate-400">Not generating</div>
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-center justify-center bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                                <div id="qrcodePlaceholder" class="w-32 h-32 flex items-center justify-center rounded-lg">
+                                    <span class="text-xs text-slate-400 text-center">[ QR Code Here ]</span>
+                                </div>
+                                <span class="text-xs text-slate-400 mt-2">Scan with Student App</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- OD Requests Approval Widget -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900 mb-4"><i class="fa-solid fa-clipboard-check text-indigo-600 mr-2"></i>Pending OD Approvals</h3>
+                        <div id="facultyOdList" class="space-y-3 max-h-72 overflow-y-auto pr-1">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Panel -->
+            <div id="adminPanel" class="hidden grid grid-cols-1 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-shield-halved text-indigo-600 mr-2"></i>System Geofence & User Administration</h3>
+                        <div class="space-x-2">
+                            <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition">
+                                <i class="fa-solid fa-file-excel mr-1"></i> Export Excel (SheetJS)
+                            </button>
+                            <button onclick="exportToJson()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition">
+                                <i class="fa-solid fa-file-code mr-1"></i> Export JSON
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-sm text-slate-500 mb-6">Configure campus boundary coordinates, monitor live system logs, and review overall attendance audit records.</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                            <h4 class="font-bold text-sm text-slate-800">Campus Center Latitude</h4>
+                            <input type="text" id="configLat" value="13.0827" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono">
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                            <h4 class="font-bold text-sm text-slate-800">Campus Center Longitude</h4>
+                            <input type="text" id="configLon" value="80.2707" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono">
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                            <h4 class="font-bold text-sm text-slate-800">Geofence Radius (Meters)</h4>
+                            <input type="number" id="configRadius" value="50" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono">
+                        </div>
+                    </div>
+                    <button onclick="saveGeofenceConfig()" class="bg-slate-800 hover:bg-slate-900 text-white font-medium px-4 py-2 rounded-lg text-sm transition">
+                        Update Geofence Parameters
+                    </button>
+                </div>
+            </div>
+
+            <!-- Attendance Records & Logs Table -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-table-list text-indigo-600 mr-2"></i>Live Attendance & Audit Logs</h3>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Import Excel / JSON File Option & Refresh Button -->
+                        <label class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs px-3 py-2 rounded-lg font-medium cursor-pointer transition border border-indigo-200 flex items-center space-x-1">
+                            <i class="fa-solid fa-file-import"></i>
+                            <span>Import Excel / JSON</span>
+                            <input type="file" id="importFile" accept=".xlsx, .xls, .json" class="hidden" onchange="handleFileImport(event)">
+                        </label>
+                        <button onclick="refreshLogs()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-2 rounded-lg font-medium transition border border-slate-300 flex items-center space-x-1" title="Refresh logs view">
+                            <i class="fa-solid fa-rotate"></i>
+                            <span>Refresh Logs</span>
+                        </button>
+                        <input type="text" id="tableSearch" onkeyup="filterTable()" placeholder="Search logs..." class="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                                <th class="p-3">Session ID</th>
+                                <th class="p-3">Timestamp</th>
+                                <th class="p-3">User ID</th>
+                                <th class="p-3">Course</th>
+                                <th class="p-3">Coordinates (Lat, Lon)</th>
+                                <th class="p-3">Distance</th>
+                                <th class="p-3">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendanceTableBody" class="divide-y divide-slate-100 text-xs">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+            <p>&copy; 2026 GeoCampus Hybrid Attendance System. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // User Authentication Database (For Demo Purposes)
+        const users = [
+            { id: "CIT2026001", password: "student123", role: "student", name: "Student One" },
+            { id: "faculty01", password: "faculty123", role: "faculty", name: "Faculty One" },
+            { id: "admin01", password: "admin123", role: "admin", name: "Administrator" }
+        ];
+
+        // State Management & LocalStorage Persistence
+        let currentUser = JSON.parse(localStorage.getItem("currentUser")) || null;
+        let campusConfig = JSON.parse(localStorage.getItem("campusConfig")) || { lat: 13.0827, lon: 80.2707, radius: 50 };
+        
+        // Active Session Data Object
+        let activeSession = JSON.parse(localStorage.getItem("activeSession")) || null;
+        let timerInterval = null;
+        
+        let currentCoords = null;
+        let currentDistance = null;
+        let currentAccuracy = null;
+        let gpsWatcherId = null; 
+
+        let attendanceLogs = JSON.parse(localStorage.getItem("attendanceLogs")) || [];
+        let odRequests = JSON.parse(localStorage.getItem("odRequests")) || [];
+
+        // Save State Centralized Function
+        function saveData() {
+            localStorage.setItem("attendanceLogs", JSON.stringify(attendanceLogs));
+            localStorage.setItem("odRequests", JSON.stringify(odRequests));
+            localStorage.setItem("campusConfig", JSON.stringify(campusConfig));
+        }
+
+        // Navigation View Switcher
+        function switchView(viewName) {
+            if (viewName === 'dashboard' && currentUser) {
+                document.getElementById('authView').classList.add('hidden');
+                document.getElementById('dashboardView').classList.remove('hidden');
+            }
+        }
+
+        // Timer Logic for Session Countdown
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!activeSession) return;
+                
+                const remaining = activeSession.expiresAt - Date.now();
+                const timerEl = document.getElementById("tokenTimer");
+                if (!timerEl) return;
+                
+                if (remaining <= 0) {
+                    timerEl.innerText = "Expired";
+                    timerEl.className = "text-sm font-semibold text-slate-400";
+                } else {
+                    const seconds = Math.ceil(remaining / 1000);
+                    timerEl.innerText = `${seconds}s remaining`;
+                    timerEl.className = "text-sm font-semibold text-rose-600";
+                }
+            }, 1000);
+        }
+
+        // Render QR Code Wrapper
+        function renderQRCode(token) {
+            const qrContainer = document.getElementById("qrcodePlaceholder");
+            if (qrContainer) {
+                qrContainer.innerHTML = ""; // Clear existing placeholder or code
+                qrContainer.className = "w-32 h-32 flex items-center justify-center rounded-lg bg-white";
+                new QRCode(qrContainer, {
+                    text: token,
+                    width: 128,
+                    height: 128,
+                    colorDark : "#0f172a",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+            }
+        }
+
+        // Initialize view if session already active in localStorage
+        window.addEventListener('DOMContentLoaded', () => {
+            if (activeSession) {
+                if (document.getElementById('activeSessionToken')) {
+                    document.getElementById('activeSessionToken').innerText = activeSession.token;
+                }
+                if (document.getElementById('facultyCourseCodeInput')) {
+                    document.getElementById('facultyCourseCodeInput').value = activeSession.token.split('-')[0];
+                }
+                renderQRCode(activeSession.token);
+            }
+            startTimer();
+
+            if (currentUser) {
+                document.getElementById('authView').classList.add('hidden');
+                document.getElementById('dashboardView').classList.remove('hidden');
+                document.getElementById('userInfo').classList.remove('hidden');
+                document.getElementById('logoutBtn').classList.remove('hidden');
+                document.getElementById('userNameRole').innerText = `${currentUser.name} (${currentUser.role.toUpperCase()})`;
+
+                document.getElementById('studentPanel').classList.toggle('hidden', currentUser.role !== 'student');
+                document.getElementById('facultyPanel').classList.toggle('hidden', currentUser.role !== 'faculty');
+                document.getElementById('adminPanel').classList.toggle('hidden', currentUser.role !== 'admin');
+
+                renderDashboard();
+                startGpsTracking();
+            }
+        });
+
+        // Haversine Formula for GPS Distance Calculation
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth radius in meters
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c; // Distance in meters
+        }
+
+        // Authentication Handler
+        function handleLogin() {
+            const role = document.getElementById('loginRole').value;
+            const id = document.getElementById('loginId').value.trim();
+            const password = document.getElementById('loginPass').value;
+
+            const user = users.find(u =>
+                u.id === id &&
+                u.password === password &&
+                u.role === role
+            );
+
+            if (!user) {
+                alert("Invalid credentials.");
+                return;
+            }
+
+            currentUser = user;
+            localStorage.setItem("currentUser", JSON.stringify(user));
+
+            document.getElementById('authView').classList.add('hidden');
+            document.getElementById('dashboardView').classList.remove('hidden');
+            document.getElementById('userInfo').classList.remove('hidden');
+            document.getElementById('logoutBtn').classList.remove('hidden');
+            document.getElementById('userNameRole').innerText = `${user.name} (${user.role.toUpperCase()})`;
+
+            // Configure panel visibility
+            document.getElementById('studentPanel').classList.toggle('hidden', user.role !== 'student');
+            document.getElementById('facultyPanel').classList.toggle('hidden', user.role !== 'faculty');
+            document.getElementById('adminPanel').classList.toggle('hidden', user.role !== 'admin');
+
+            renderDashboard();
+            startGpsTracking();
+        }
+
+        function logout() {
+            if (gpsWatcherId !== null) {
+                navigator.geolocation.clearWatch(gpsWatcherId);
+                gpsWatcherId = null;
+            }
+
+            currentUser = null;
+            localStorage.removeItem("currentUser");
+            document.getElementById('authView').classList.remove('hidden');
+            document.getElementById('dashboardView').classList.add('hidden');
+            document.getElementById('userInfo').classList.add('hidden');
+            document.getElementById('logoutBtn').classList.add('hidden');
+
+            document.getElementById('studentPanel').classList.add('hidden');
+            document.getElementById('facultyPanel').classList.add('hidden');
+            document.getElementById('adminPanel').classList.add('hidden');
+        }
+
+        function renderDashboard() {
+            renderAttendanceTable();
+            renderFacultyOdList();
+            const pendingCount = odRequests.filter(r => r.status === 'Pending').length;
+            if (document.getElementById('statOdRequests')) {
+                document.getElementById('statOdRequests').innerText = pendingCount;
+            }
+
+            if (document.getElementById('configLat')) document.getElementById('configLat').value = campusConfig.lat;
+            if (document.getElementById('configLon')) document.getElementById('configLon').value = campusConfig.lon;
+            if (document.getElementById('configRadius')) document.getElementById('configRadius').value = campusConfig.radius;
+        }
+
+        // Real GPS Tracking & Geofence Verification
+        function startGpsTracking() {
+            if (!navigator.geolocation) {
+                console.warn("Geolocation API not supported by browser.");
+                return;
+            }
+
+            if (gpsWatcherId !== null) {
+                navigator.geolocation.clearWatch(gpsWatcherId);
+            }
+
+            gpsWatcherId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const { latitude, longitude, accuracy, altitude } = position.coords;
+
+                    let lat = latitude;
+                    let lon = longitude;
+                    currentAccuracy = accuracy;
+
+                    currentCoords = { lat, lon };
+                    currentDistance = calculateDistance(lat, lon, campusConfig.lat, campusConfig.lon);
+
+                    // Anti-Spoofing Heuristic Check
+                    const isMockSuspicious = (accuracy === 0 || (altitude === 0 && accuracy < 1));
+
+                    const totalAllowedRadius = campusConfig.radius + currentAccuracy;
+
+                    if (document.getElementById('currentCoords')) {
+                        document.getElementById('currentCoords').innerText = `${lat.toFixed(4)}, ${lon.toFixed(4)} (±${Math.round(currentAccuracy)}m)`;
+                        document.getElementById('currentDistance').innerText = `${Math.round(currentDistance)} meters`;
+                        
+                        const indicator = document.getElementById('geofenceIndicator');
+                        if (isMockSuspicious) {
+                            indicator.innerText = "Mock Location Detected!";
+                            indicator.className = "font-bold text-rose-600 text-xs bg-rose-50 px-2 py-1 rounded";
+                            document.getElementById('statGpsStatus').innerText = "Spoofing Flagged";
+                            document.getElementById('statGpsStatus').className = "text-xl font-bold text-rose-600";
+                        } else if (currentDistance <= totalAllowedRadius) {
+                            indicator.innerText = "Inside Perimeter (Valid)";
+                            indicator.className = "font-bold text-emerald-600 text-xs bg-emerald-50 px-2 py-1 rounded";
+                            document.getElementById('statGpsStatus').innerText = "Within Perimeter";
+                            document.getElementById('statGpsStatus').className = "text-xl font-bold text-emerald-600";
+                        } else {
+                            indicator.innerText = "Outside Perimeter (Invalid)";
+                            indicator.className = "font-bold text-rose-600 text-xs bg-rose-50 px-2 py-1 rounded";
+                            document.getElementById('statGpsStatus').innerText = "Out of Bounds";
+                            document.getElementById('statGpsStatus').className = "text-xl font-bold text-rose-600";
+                        }
+                    }
+                },
+                (error) => {
+                    console.error("GPS Error:", error.message);
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+        }
+
+        // Student Check-In Action
+        function performCheckIn() {
+            const tokenInput = document.getElementById('sessionTokenInput').value.trim().toUpperCase();
+            if (!tokenInput) {
+                alert("Please enter a valid session token.");
+                return;
+            }
+
+            if (!activeSession) {
+                alert("No active session initialized by faculty.");
+                return;
+            }
+
+            if (Date.now() > activeSession.expiresAt) {
+                alert("This session has expired.");
+                return;
+            }
+
+            if (tokenInput !== activeSession.token) {
+                alert("Invalid session token. Please verify the code on the screen.");
+                return;
+            }
+
+            const courseCode = activeSession.token.split('-')[0];
+            const alreadyMarked = attendanceLogs.find(
+                log =>
+                    log.userId === currentUser.id &&
+                    log.sessionId === activeSession.token
+            );
+
+            if (alreadyMarked) {
+                alert("Attendance already recorded for this session.");
+                return;
+            }
+
+            if (!currentCoords) {
+                alert("GPS position not available yet.");
+                return;
+            }
+            const distance = currentDistance;
+            const gpsAccuracy = currentAccuracy !== null ? currentAccuracy : 999.0;
+            const maxAllowedAccuracy = 50.0; 
+
+            if (gpsAccuracy > maxAllowedAccuracy) {
+                alert(`Check-in rejected: GPS accuracy too low (±${Math.round(gpsAccuracy)}m). Please move near a window or disable battery saver.`);
+                return;
+            }
+
+            const isInside = distance <= (campusConfig.radius + gpsAccuracy);
+            const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+            const status = isInside ? "Verified" : "Rejected (Out of Bounds / Weak GPS)";
+
+            attendanceLogs.unshift({
+                sessionId: activeSession.token,
+                timestamp: now,
+                userId: currentUser ? currentUser.id : "CIT2026001",
+                course: courseCode,
+                coords: `${currentCoords.lat.toFixed(6)}, ${currentCoords.lon.toFixed(6)}`,
+                distance: `${Math.round(distance)}m`,
+                status: status
+            });
+            saveData();
+
+            renderAttendanceTable();
+
+            if (isInside) {
+                alert("Attendance successfully verified and recorded securely!");
+                document.getElementById('sessionTokenInput').value = '';
+            } else {
+                alert("Check-in failed: You are outside the authorized campus geofence perimeter or GPS accuracy is unstable.");
+            }
+        }
+
+        // Faculty Session Generator
+        function generateNewSession() {
+            const courseInput = document.getElementById('facultyCourseCodeInput');
+            const courseCode = courseInput ? courseInput.value.trim().toUpperCase() || 'CS301' : 'CS301';
+            const randomCode = Math.floor(1000 + Math.random() * 9000);
+            const token = `${courseCode}-${randomCode}`;
+            
+            activeSession = {
+                token: token,
+                expiresAt: Date.now() + 60000 // 60 seconds expiry
+            };
+            
+            localStorage.setItem("activeSession", JSON.stringify(activeSession));
+            document.getElementById('activeSessionToken').innerText = token;
+            
+            renderQRCode(token);
+            startTimer();
+            alert(`New session token generated: ${token}`);
+        }
+
+        // OD Submission & Approval
+        function submitOD(event) {
+            event.preventDefault();
+            const reason = document.getElementById('odReason').value;
+            const date = document.getElementById('odDate').value;
+
+            odRequests.push({
+                id: odRequests.length + 1,
+                user: currentUser ? currentUser.id : "CIT2026001",
+                reason: reason,
+                date: date,
+                status: "Pending"
+            });
+            saveData();
+
+            document.getElementById('statOdRequests').innerText = odRequests.filter(r => r.status === 'Pending').length;
+            alert("On-Duty request submitted successfully!");
+            document.getElementById('odForm').reset();
+            renderFacultyOdList();
+        }
+
+        function renderFacultyOdList() {
+            const container = document.getElementById('facultyOdList');
+            if (!container) return;
+
+            if (odRequests.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No pending OD requests.</p>`;
+                return;
+            }
+
+            container.innerHTML = odRequests.map(req => `
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                    <div>
+                        <p class="font-bold text-slate-800">${req.user} - ${req.reason}</p>
+                        <p class="text-slate-500">Date: ${req.date} | Status: <span class="font-semibold text-amber-600">${req.status}</span></p>
+                    </div>
+                    ${req.status === 'Pending' ? `
+                        <div class="space-x-1">
+                            <button onclick="updateOdStatus(${req.id}, 'Approved')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded font-medium">Approve</button>
+                            <button onclick="updateOdStatus(${req.id}, 'Rejected')" class="bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded font-medium">Reject</button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        function updateOdStatus(id, status) {
+            const req = odRequests.find(r => r.id === id);
+            if (req) {
+                req.status = status;
+                saveData();
+                renderFacultyOdList();
+                document.getElementById('statOdRequests').innerText = odRequests.filter(r => r.status === 'Pending').length;
+            }
+        }
+
+        // Render Attendance Table
+        function renderAttendanceTable() {
+            const tbody = document.getElementById('attendanceTableBody');
+            if (!tbody) return;
+
+            tbody.innerHTML = attendanceLogs.map(log => `
+                <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                    <td class="p-3 font-mono text-slate-600">${log.sessionId || 'N/A'}</td>
+                    <td class="p-3 font-mono text-slate-600">${log.timestamp}</td>
+                    <td class="p-3 font-medium text-slate-800">${log.userId}</td>
+                    <td class="p-3 text-slate-600">${log.course}</td>
+                    <td class="p-3 font-mono text-slate-500">${log.coords}</td>
+                    <td class="p-3 font-mono text-slate-600">${log.distance}</td>
+                    <td class="p-3">
+                        <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${log.status.includes('Verified') ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">
+                            ${log.status}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Manual Refresh Logs Handler
+        function refreshLogs() {
+            renderAttendanceTable();
+            alert("Logs successfully refreshed!");
+        }
+
+        // Import Excel / JSON File Handler with Deduplication
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const fileName = file.name.toLowerCase();
+            const reader = new FileReader();
+
+            if (fileName.endsWith('.json')) {
+                reader.onload = function(e) {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (Array.isArray(importedData)) {
+                            const existing = new Set(attendanceLogs.map(x => (x.sessionId || x.course) + "_" + x.userId));
+                            const newRecords = importedData.filter(x => !existing.has((x.sessionId || x.course) + "_" + x.userId));
+                            
+                            attendanceLogs = newRecords.concat(attendanceLogs);
+                            saveData();
+                            renderAttendanceTable();
+                            alert(`Successfully imported ${newRecords.length} new records from JSON! (${importedData.length - newRecords.length} duplicates skipped)`);
+                        } else {
+                            alert("Invalid JSON format. Expected an array of log objects.");
+                        }
+                    } catch (err) {
+                        alert("Error parsing JSON file: " + err.message);
+                    } finally {
+                        event.target.value = '';
+                    }
+                };
+                reader.readAsText(file);
+            } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const jsonSheetData = XLSX.utils.sheet_to_json(worksheet);
+
+                        if (jsonSheetData.length > 0) {
+                            const mappedLogs = jsonSheetData.map(row => ({
+                                sessionId: row.sessionId || row['Session ID'] || (activeSession ? activeSession.token : 'UNKNOWN'),
+                                timestamp: row.timestamp || row.Timestamp || new Date().toISOString().replace('T', ' ').substring(0, 19),
+                                userId: row.userId || row['User ID'] || row.user || 'UNKNOWN',
+                                course: row.course || row.Course || row.Subject || 'CS301',
+                                coords: row.coords || row.Coordinates || '13.0827, 80.2707',
+                                distance: row.distance || row.Distance || '0m',
+                                status: row.status || row.Status || 'Verified'
+                            }));
+
+                            const existing = new Set(attendanceLogs.map(x => (x.sessionId || x.course) + "_" + x.userId));
+                            const newRecords = mappedLogs.filter(x => !existing.has((x.sessionId || x.course) + "_" + x.userId));
+
+                            attendanceLogs = newRecords.concat(attendanceLogs);
+                            saveData();
+                            renderAttendanceTable();
+                            alert(`Successfully imported ${newRecords.length} new records from Excel! (${mappedLogs.length - newRecords.length} duplicates skipped)`);
+                        } else {
+                            alert("The uploaded Excel sheet contains no rows.");
+                        }
+                    } catch (err) {
+                        alert("Error reading Excel file: " + err.message);
+                    } finally {
+                        event.target.value = '';
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert("Unsupported file format. Please upload a .xlsx, .xls, or .json file.");
+                event.target.value = '';
+            }
+        }
+
+        function filterTable() {
+            const query = document.getElementById('tableSearch').value.toLowerCase();
+            const rows = document.querySelectorAll('#attendanceTableBody tr');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+
+        // Admin Geofence Config
+        function saveGeofenceConfig() {
+            campusConfig.lat = parseFloat(document.getElementById('configLat').value);
+            campusConfig.lon = parseFloat(document.getElementById('configLon').value);
+            campusConfig.radius = parseFloat(document.getElementById('configRadius').value);
+            saveData();
+            alert("Campus geofence parameters updated successfully!");
+        }
+
+        // SheetJS Excel Export
+        function exportToExcel() {
+            const worksheet = XLSX.utils.json_to_sheet(attendanceLogs);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance Logs");
+            XLSX.writeFile(workbook, "GeoCampus_Attendance_Report.xlsx");
+        }
+
+        function exportToJson() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(attendanceLogs, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "GeoCampus_Attendance_Logs.json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+    </script>
+</body>
+</html>
